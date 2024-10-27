@@ -7,12 +7,12 @@ let canvasSize = { width: 1080, height: 1920 };
 let backgroundImgSrc = 'reels_background.jpg'; // الخلفية الثابتة
 let whiteTextY = 660; // موقع النص الأبيض الثابت
 
-const max_width = 958;
+const max_width = 870;
 const max_height = 649;
 const border_radius = 20;
 const padding_x = 59;
 const additional_top_padding = 200;
-const text_box_width = 958;
+const text_box_width = 870;
 const text_box_height = 250;
 
 let croppedImage;
