@@ -22,7 +22,7 @@ const backgroundImg = new Image();
 backgroundImg.src = backgroundImgSrc; // تحميل الخلفية الثابتة
 
 async function loadFont() {
-    const font = new FontFace('LamaRounded', 'url(LamaRounded-SemiBold.ttf)');
+    const font = new FontFace('Tajawal', 'url(Tajawal-Regular.ttf)');
     await font.load();
     document.fonts.add(font);
 }
