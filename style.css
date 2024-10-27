@@ -18,7 +18,7 @@
 
 body {
   background-color: var(--background-color);
-  font-family: 'Arial', sans-serif;
+  font-family: "Tajawal", serif;
   color: var(--text-color);
   margin: 0;
   padding: 0;
@@ -669,4 +669,37 @@ input#greenTextPosition {
 
 .hideandshow {
 display: none; /* Ø¥Ø®ÙØ§Ø¡ Ø§Ù„Ø¹Ù†Ø§ØµØ± Ø¨Ø´ÙƒÙ„ Ø§ÙØªØ±Ø§Ø¶ÙŠ */
+}
+.textPosition {
+  max-width: 350px;
+  width: 300px;
+  background: #101b1d;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 5px;
+  border-bottom: 1px solid #0f191b;
+}
+
+.imagePosition {
+  max-width: 350px;
+  width: 300px;
+  background: #101b1d;
+  height: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 5px;
+  border-bottom: 1px solid #0f191b;
+  margin: 10px 0;
+}
+
+input#textPositionSlider {
+  width: 100%;
+}
+input#imagePositionSlider {
+  width: 100%;
 }

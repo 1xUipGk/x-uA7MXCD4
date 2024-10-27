@@ -69,32 +69,27 @@ async function processImage(image) {
         }
 
         const MAX_SIZE = 870;
-        
-        // حساب الأبعاد الجديدة مع الحفاظ على النسبة
         let newWidth, newHeight;
         const aspectRatio = image.width / image.height;
 
         if (image.width > image.height) {
-            // الصورة أعرض - نضبط العرض على 980
             newWidth = MAX_SIZE;
             newHeight = Math.round(MAX_SIZE / aspectRatio);
         } else {
-            // الصورة أطول - نضبط الارتفاع على 980
             newHeight = MAX_SIZE;
             newWidth = Math.round(MAX_SIZE * aspectRatio);
         }
 
-        // ضبط أبعاد الكانفا
         canvas.width = canvasSize.width;
         canvas.height = canvasSize.height;
 
-        // رسم الخلفية
         ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
 
         const offsetX = (canvas.width - newWidth) / 2;
-        const offsetY = (canvas.height - newHeight) / 2 + additional_top_padding;
+        const offsetY = isImagePositionEnabled ? imagePositionY : (canvas.height - newHeight) / 2 + additional_top_padding;
 
-        // رسم الصورة مع الحواف المستديرة
+
+        // باقي كود رسم الصورة...
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(offsetX + border_radius, offsetY);
@@ -107,13 +102,9 @@ async function processImage(image) {
         ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
         ctx.restore();
 
-        // رسم العلامة المائية
         drawWatermark(offsetX, offsetY, newWidth, newHeight);
-        
-        // رسم النصوص
         drawTexts();
 
-        // عرض الكانفا وتحديث زر التنزيل
         canvas.style.display = "block";
         updateDownloadButton();
 
@@ -121,6 +112,42 @@ async function processImage(image) {
         console.error("Error in processImage:", error);
     }
 }
+
+// إضافة مستمعي الأحداث للمتحكمات
+document.getElementById('textPositionSlider').addEventListener('input', function() {
+    isTextPositionEnabled = true; // تفعيل تحريك النص
+    document.getElementById('toggleTextPosition').checked = true; // تحديث حالة الـcheckbox
+    textPositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+});
+
+document.getElementById('imagePositionSlider').addEventListener('input', function() {
+    isImagePositionEnabled = true; // تفعيل تحريك الصورة
+    document.getElementById('toggleImagePosition').checked = true; // تحديث حالة الـcheckbox
+    imagePositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+});
+
+// إضافة مستمعي الأحداث للـcheckboxes
+document.getElementById('toggleTextPosition').addEventListener('change', function() {
+    isTextPositionEnabled = this.checked;
+    document.getElementById('textPositionSlider').disabled = !this.checked;
+    if (croppedImage) processImage(croppedImage);
+});
+
+document.getElementById('toggleImagePosition').addEventListener('change', function() {
+    isImagePositionEnabled = this.checked;
+    document.getElementById('imagePositionSlider').disabled = !this.checked;
+    if (croppedImage) processImage(croppedImage);
+});
+
+// تهيئة حالة المتحكمات عند تحميل الصفحة
+document.addEventListener("DOMContentLoaded", function() {
+    // تعطيل المؤشرات في البداية
+    document.getElementById('textPositionSlider').disabled = true;
+    document.getElementById('imagePositionSlider').disabled = true;
+});
+
 function drawWatermark(offsetX, offsetY, newWidth, newHeight) {
     const watermark = new Image();
     watermark.onload = function () {
@@ -136,16 +163,24 @@ function drawWatermark(offsetX, offsetY, newWidth, newHeight) {
     watermark.src = document.getElementById('watermarkSelect').value;
 }
 
+// إضافة متغيرات التحكم في الحالة
+let isTextPositionEnabled = false;
+let isImagePositionEnabled = false;
+let defaultTextPosition = 400;
+let defaultImagePosition = 1000;
+let textPositionY = defaultTextPosition;
+let imagePositionY = defaultImagePosition;
+// تحديث دالة drawTexts لاستخدام الموقع المناسب
 function drawTexts() {
     const text = document.getElementById('textBox').value;
     if (!text) return;
 
     const rectX = 50;
-    const rectY = 400;
+    const rectY = isTextPositionEnabled ? textPositionY : defaultTextPosition; // استخدام الموقع المناسب
     const rectWidth = 980;
     const rectHeight = 265;
-    const lineHeight = 50; // ارتفاع السطر
-    const padding_x = 10; // الحشو
+    const lineHeight = 50;
+    const padding_x = 10;
 
     ctx.save();
     ctx.font = "48px 'Tajawal', sans-serif";
@@ -330,7 +365,15 @@ document.getElementById('opacitySlider').addEventListener('input', function() {
 
 
 
+document.getElementById('textPositionSlider').addEventListener('input', function() {
+    textPositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+});
 
+document.getElementById('imagePositionSlider').addEventListener('input', function() {
+    imagePositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+});
 
 
 
