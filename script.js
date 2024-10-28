@@ -22,7 +22,7 @@ const backgroundImg = new Image();
 backgroundImg.src = backgroundImgSrc; // تحميل الخلفية الثابتة
 
 async function loadFont() {
-    const font = new FontFace('Tajawal', 'url(Tajawal-Regular.ttf)');
+    const font = new FontFace('Tajawal', 'url(Tajawal-medium.ttf)');
     await font.load();
     document.fonts.add(font);
 }
@@ -177,7 +177,7 @@ function drawTexts() {
 
     const rectX = 50;
     const rectY = isTextPositionEnabled ? textPositionY : defaultTextPosition; // استخدام الموقع المناسب
-    const rectWidth = 980;
+    const rectWidth = 930;
     const rectHeight = 265;
     const lineHeight = 50;
     const padding_x = 10;
@@ -264,66 +264,149 @@ function downloadImage() {
         console.error("Canvas does not contain any image data.");
     }
 }
-// تابع لاستخراج النصوص من الصورة
-async function extractTextFromImage(canvas) {
-}
 
-// تابع للتعامل مع الملفات
 async function handleFiles(files) {
     await loadFont(); // تأكد من تحميل الخطوط إذا لزم الأمر
+
     if (files.length > 0) {
-        const file = files[0];
-        const reader = new FileReader();
-        reader.onload = async (event) => {
-            const img = new Image();
-            img.onload = async function () {
-                // تحقق من أن الصورة مربعة وأكبر من 1000px
-                if (img.width === img.height && img.height > 1000) {
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
-                    
-                    // تحديد منطقة الاستخراج
-                    const extractionHeight = 250; // 1000 - 750
-                    canvas.width = img.width;
-                    canvas.height = extractionHeight;
-                    
-                    // رسم الجزء المحدد من الصورة على الكانفاس
-                    ctx.drawImage(img, 0, 750, img.width, extractionHeight, 0, 0, img.width, extractionHeight);
-                    
-                    try {
-                        const extractedText = await extractTextFromImage(canvas);
-                        if (extractedText) {
-                            document.getElementById("textBox").value = extractedText;
-                        } else {
-                            console.log("No text extracted from the image.");
-                        }
-                    } catch (error) {
-                        console.error("Error extracting text:", error);
-                    }
+        const file = files[0]; // استخدام أول ملف فقط
+
+        if (file) {
+            // التحقق من نوع الملف
+            if (file.type === "image/heic") {
+                // تحويل HEIC إلى JPEG
+                const convertedBlob = await convertHEICToJPEG(file);
+                if (convertedBlob) {
+                    processImage(convertedBlob); // معالجة الصورة بعد تحويلها
+                    await extractAndDisplayText(convertedBlob); // استخراج النص وعرضه
                 } else {
-                    console.error("Image does not meet the required dimensions.");
+                    console.error("فشل تحويل ملف HEIC.");
                 }
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
+            } else if (file.type.startsWith("image/")) {
+                const reader = new FileReader();
+
+                reader.onload = async (event) => {
+                    const img = new Image();
+
+                    img.onload = async function () {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+
+                        // تعيين حجم الكانفاس ليكون بنفس أبعاد الصورة
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+
+                        // رسم الصورة بالكامل على الكانفاس
+                        ctx.drawImage(img, 0, 0, img.width, img.height);
+
+                        // محاولة استخراج النص من الصورة
+                        await extractAndDisplayText(canvas); // استخراج النص وعرضه
+                    };
+
+                    img.src = event.target.result; // تعيين مصدر الصورة
+                };
+
+                reader.readAsDataURL(file); // قراءة الملف كـ Data URL
+            } else {
+                console.error("الملف المحدد ليس صورة.");
+            }
+        }
+    } else {
+        console.error("لم يتم اختيار أي ملفات.");
     }
 }
+
+// وظيفة لاستخراج النص وعرضه
+async function extractAndDisplayText(canvas) {
+    const ctx = canvas.getContext('2d');
+
+    // تحديد منطقة الاستخراج (من 750 بكسل إلى 1000 بكسل من الأعلى)
+    const extractionHeight = 250; // ارتفاع منطقة الاستخراج
+    const startY = 750; // بداية منطقة الاستخراج من الأعلى
+    const endY = 1000; // نهاية منطقة الاستخراج
+
+    // تعيين حجم الكانفاس لمنطقة الاستخراج
+    const extractionCanvas = document.createElement('canvas');
+    extractionCanvas.width = canvas.width;
+    extractionCanvas.height = extractionHeight;
+
+    const extractionCtx = extractionCanvas.getContext('2d');
+
+    // رسم الجزء المحدد من الصورة على الكانفاس الجديد
+    extractionCtx.drawImage(
+        canvas,
+        0, startY, // إحداثيات البداية
+        canvas.width, endY - startY, // عرض ونسبة ارتفاع الصورة
+        0, 0, // إحداثيات البداية للكانفاس الجديد
+        canvas.width, extractionHeight // عرض وارتفاع الكانفاس الجديد
+    );
+
+    // حاول استخراج النص من منطقة الاستخراج
+    try {
+        const extractedText = await extractTextFromImage(extractionCanvas);
+        if (extractedText) {
+            document.getElementById("textBox").value = extractedText; // عرض النص المستخرج
+
+            // إذا نجح استخراج النص، يتم تحديث الكانفاس الأصلي
+            processImage(croppedImage); // استدعاء الدالة لتحديث الكانفاس
+        } else {
+            console.log("لم يتم استخراج أي نص من الصورة.");
+        }
+    } catch (error) {
+        console.error("خطأ في استخراج النص:", error);
+    }
+}
+
+// وظيفة لتحويل HEIC إلى JPEG
+async function convertHEICToJPEG(file) {
+    try {
+        // تأكد من أن لديك مكتبة لتحويل HEIC إلى JPEG مثل "heic2any"
+        const blob = await heic2any({
+            blob: file,
+            toType: "image/jpeg",
+            quality: 1
+        });
+        return blob;
+    } catch (error) {
+        console.error("حدث خطأ أثناء تحويل HEIC إلى JPEG:", error);
+        return null;
+    }
+}
+
+
+
+function processImageFromBlob(blob) {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+        const img = new Image();
+        img.onload = async function () {
+            // تأكد من أن الكانفاس تم تحميله
+            canvas.width = canvasSize.width;
+            canvas.height = canvasSize.height;
+
+            ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height); // رسم الخلفية
+
+            // رسم الصورة على الكانفاس
+            ctx.drawImage(img, 0, 0, img.width, img.height); // ضبط موضع الصورة
+            croppedImage = img; // الاحتفاظ بالصورة المُعالجة
+            
+            processImage(croppedImage); // معالجة الصورة (ستقوم بتطبيق التأثيرات أو الرسوم)
+        };
+        img.onerror = function (error) {
+            console.error("Error loading image:", error);
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(blob); // قراءة الـ Blob كـ Data URL
+}
+
+
 
 // وظيفة لاستخدام هذه الوظيفة عند اختيار ملفات
 document.getElementById("imageUpload").addEventListener("change", (event) => {
     handleFiles(event.target.files);
 });
 
-async function extractTextFromImage(canvas) {
-    try {
-        const result = await Tesseract.recognize(canvas, 'eng+ara');
-        return result.data.text;
-    } catch (error) {
-        console.error("Error extracting text from image:", error);
-        return null;
-    }
-}
 
 let textChangeTimer;
 function handleTextChange() {
@@ -374,6 +457,22 @@ document.getElementById('imagePositionSlider').addEventListener('input', functio
     imagePositionY = parseInt(this.value);
     if (croppedImage) processImage(croppedImage);
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
