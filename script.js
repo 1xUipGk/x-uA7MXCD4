@@ -21,31 +21,64 @@ let watermarkOpacity = 1;
 const backgroundImg = new Image();
 backgroundImg.src = backgroundImgSrc; // تحميل الخلفية الثابتة
 
+// إضافة معالج أحداث لتحميل الخلفية
+backgroundImg.onload = function() {
+    console.log("تم تحميل الخلفية بنجاح");
+};
+
+backgroundImg.onerror = function() {
+    console.error("فشل تحميل الخلفية");
+};
+
 async function loadFont() {
-    const font = new FontFace('Tajawal', 'url(Tajawal-medium.ttf)');
-    await font.load();
-    document.fonts.add(font);
+    try {
+        const font = new FontFace('Tajawal', 'url(Tajawal-medium.ttf)');
+        await font.load();
+        document.fonts.add(font);
+        console.log("تم تحميل الخط بنجاح");
+    } catch (error) {
+        console.error("فشل تحميل الخط:", error);
+        throw error;
+    }
 }
 
 function wrapText(context, text, x, y, maxWidth, lineHeight) {
     let words = text.split(' ');
     let line = '';
     let lines = [];
+    const maxLines = 4; // الحد الأقصى للأسطر
 
+    // تقسيم النص إلى أسطر
     for (let n = 0; n < words.length; n++) {
         let testLine = line + words[n] + ' ';
         let metrics = context.measureText(testLine);
         let testWidth = metrics.width;
+
         if (testWidth > maxWidth && n > 0) {
+            // إذا وصلنا للحد الأقصى من الأسطر، نتوقف
+            if (lines.length >= maxLines - 1) {
+                // إضافة علامات الحذف (...) للسطر الأخير إذا كان هناك المزيد من النص
+                let lastLine = line.trim();
+                while (context.measureText(lastLine + '...').width > maxWidth) {
+                    lastLine = lastLine.slice(0, -1);
+                }
+                lines.push(lastLine + '...');
+                break;
+            }
             lines.push(line.trim());
             line = words[n] + ' ';
         } else {
             line = testLine;
         }
     }
-    lines.push(line.trim());
 
-    for (let i = 0; i < lines.length; i++) {
+    // إضافة السطر الأخير إذا لم نصل للحد الأقصى
+    if (lines.length < maxLines && line.trim().length > 0) {
+        lines.push(line.trim());
+    }
+
+    // رسم الأسطر
+    for (let i = 0; i < Math.min(lines.length, maxLines); i++) {
         let lineText = lines[i];
         let isArabic = /[\u0600-\u06FF]/.test(lineText);
 
@@ -59,85 +92,88 @@ function wrapText(context, text, x, y, maxWidth, lineHeight) {
         }
         context.fillText(lineText, x, y + (i * lineHeight));
     }
+
+    // إرجاع عدد الأسطر الفعلي المرسوم
+    return Math.min(lines.length, maxLines);
 }
 
-async function processImage(image) {
-    try {
-        if (!canvas || !image) {
-            console.error("Canvas or image not found");
-            return;
+// تحديث المتغيرات العامة للإعدادات الافتراضية
+const defaultSettings = {
+    textPosition: {
+        defaultY: 400,
+        minY: 300,
+        maxY: 700
+    },
+    imagePosition: {
+        defaultY: 435, // تم تعديل القيمة الافتراضية لموقع الصورة
+        minY: 600,
+        maxY: 1100
+    }
+};
+
+// إضافة دالة throttle للحد من عدد مرات تنفيذ الدالة
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            requestAnimationFrame(() => {
+                inThrottle = false;
+            });
         }
-
-        const MAX_SIZE = 870;
-        let newWidth, newHeight;
-        const aspectRatio = image.width / image.height;
-
-        if (image.width > image.height) {
-            newWidth = MAX_SIZE;
-            newHeight = Math.round(MAX_SIZE / aspectRatio);
-        } else {
-            newHeight = MAX_SIZE;
-            newWidth = Math.round(MAX_SIZE * aspectRatio);
-        }
-
-        canvas.width = canvasSize.width;
-        canvas.height = canvasSize.height;
-
-        ctx.drawImage(backgroundImg, 0, 0, canvas.width, canvas.height);
-
-        const offsetX = (canvas.width - newWidth) / 2;
-        const offsetY = isImagePositionEnabled ? imagePositionY : (canvas.height - newHeight) / 2 + additional_top_padding;
-
-
-        // باقي كود رسم الصورة...
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(offsetX + border_radius, offsetY);
-        ctx.arcTo(offsetX + newWidth, offsetY, offsetX + newWidth, offsetY + newHeight, border_radius);
-        ctx.arcTo(offsetX + newWidth, offsetY + newHeight, offsetX, offsetY + newHeight, border_radius);
-        ctx.arcTo(offsetX, offsetY + newHeight, offsetX, offsetY, border_radius);
-        ctx.arcTo(offsetX, offsetY, offsetX + newWidth, offsetY, border_radius);
-        ctx.closePath();
-        ctx.clip();
-        ctx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
-        ctx.restore();
-
-        drawWatermark(offsetX, offsetY, newWidth, newHeight);
-        drawTexts();
-
-        canvas.style.display = "block";
-        updateDownloadButton();
-
-    } catch (error) {
-        console.error("Error in processImage:", error);
     }
 }
 
-// إضافة مستمعي الأحداث للمتحكمات
-document.getElementById('textPositionSlider').addEventListener('input', function() {
-    isTextPositionEnabled = true; // تفعيل تحريك النص
-    document.getElementById('toggleTextPosition').checked = true; // تحديث حالة الـcheckbox
+// تحديث معالجات الأحداث للمؤشرات
+document.getElementById('textPositionSlider').addEventListener('input', throttle(function() {
+    isTextPositionEnabled = true;
+    document.getElementById('toggleTextPosition').checked = true;
     textPositionY = parseInt(this.value);
-    if (croppedImage) processImage(croppedImage);
-});
+    if (croppedImage) {
+        requestAnimationFrame(() => {
+            processImage(croppedImage);
+        });
+    }
+}, 16)); // حوالي 60 إطار في الثانية
 
-document.getElementById('imagePositionSlider').addEventListener('input', function() {
-    isImagePositionEnabled = true; // تفعيل تحريك الصورة
-    document.getElementById('toggleImagePosition').checked = true; // تحديث حالة الـcheckbox
+document.getElementById('imagePositionSlider').addEventListener('input', throttle(function() {
+    isImagePositionEnabled = true;
+    document.getElementById('toggleImagePosition').checked = true;
     imagePositionY = parseInt(this.value);
-    if (croppedImage) processImage(croppedImage);
-});
+    if (croppedImage) {
+        requestAnimationFrame(() => {
+            processImage(croppedImage);
+        });
+    }
+}, 16));
 
 // إضافة مستمعي الأحداث للـcheckboxes
 document.getElementById('toggleTextPosition').addEventListener('change', function() {
     isTextPositionEnabled = this.checked;
-    document.getElementById('textPositionSlider').disabled = !this.checked;
+    const textSlider = document.getElementById('textPositionSlider');
+    textSlider.disabled = !this.checked;
+    
+    if (this.checked) {
+        // عند التفعيل، نضع قيمة الشريط على الموقع الحالي للنص
+        const currentTextY = textPositionY;
+        textSlider.value = currentTextY;
+    }
+    
     if (croppedImage) processImage(croppedImage);
 });
 
 document.getElementById('toggleImagePosition').addEventListener('change', function() {
     isImagePositionEnabled = this.checked;
-    document.getElementById('imagePositionSlider').disabled = !this.checked;
+    const imageSlider = document.getElementById('imagePositionSlider');
+    imageSlider.disabled = !this.checked;
+    
+    if (this.checked) {
+        // عند التفعيل، نضع قيمة الشريط على الموقع الحالي للصورة
+        const currentImageY = imagePositionY;
+        imageSlider.value = currentImageY;
+    }
+    
     if (croppedImage) processImage(croppedImage);
 });
 
@@ -148,7 +184,12 @@ document.addEventListener("DOMContentLoaded", function() {
     document.getElementById('imagePositionSlider').disabled = true;
 });
 
+// تعديل دالة drawWatermark
 function drawWatermark(offsetX, offsetY, newWidth, newHeight) {
+    if (!document.getElementById('toggleWatermark').checked) {
+        return; // لا تقم برسم العلامة المائية إذا كان الخيار غير مفعل
+    }
+
     const watermark = new Image();
     watermark.onload = function () {
         const watermarkWidth = 102;
@@ -172,74 +213,20 @@ let textPositionY = defaultTextPosition;
 let imagePositionY = defaultImagePosition;
 // تحديث دالة drawTexts لاستخدام الموقع المناسب
 function drawTexts() {
-    const text = document.getElementById('textBox').value;
-    if (!text) return;
+    requestAnimationFrame(() => {
+        const text = document.getElementById('textBox').value;
+        if (!text) return;
 
-    const rectX = 50;
-    const rectY = isTextPositionEnabled ? textPositionY : defaultTextPosition; // استخدام الموقع المناسب
-    const rectWidth = 930;
-    const rectHeight = 265;
-    const lineHeight = 50;
-    const padding_x = 10;
+        const rectY = isTextPositionEnabled ? textPositionY : defaultSettings.textPosition.defaultY;
+        
+        ctx.save();
+        ctx.font = "50px 'Tajawal', sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textBaseline = "middle";
 
-    ctx.save();
-    ctx.font = "48px 'Tajawal', sans-serif";
-    ctx.fillStyle = "#fff";
-    ctx.textBaseline = "middle";
-
-    let words = text.split(' ');
-    let line = '';
-    let lines = [];
-
-    // تقسيم النص إلى أسطر
-    for (let n = 0; n < words.length; n++) {
-        let testLine = line + words[n] + ' ';
-        let metrics = ctx.measureText(testLine);
-        let testWidth = metrics.width;
-
-        if (testWidth > rectWidth - (padding_x * 2) && n > 0) {
-            lines.push(line.trim());
-            line = words[n] + ' ';
-        } else {
-            line = testLine;
-        }
-    }
-    lines.push(line.trim());
-
-    // حساب موضع بدء الرسم عموديًا في المنتصف
-    const startY = rectY + (rectHeight - (lines.length * lineHeight)) / 2 + lineHeight / 2;
-
-    // رسم الأسطر مع تحديد المحاذاة
-    for (let i = 0; i < lines.length; i++) {
-        let lineText = lines[i];
-        let isArabic = /[\u0600-\u06FF]/.test(lineText);
-
-        if (isArabic) {
-            ctx.direction = 'rtl';
-            ctx.textAlign = 'right';
-            ctx.fillText(lineText, rectX + rectWidth - padding_x, startY + (i * lineHeight)); // محاذاة لليمين
-        } else {
-            ctx.direction = 'ltr';
-            ctx.textAlign = (i === lines.length - 1) ? 'left' : 'justify'; // المحاذاة للسطر الأخير
-            if (i === lines.length - 1) {
-                const totalTextWidth = ctx.measureText(lineText).width;
-                const spaceWidth = ctx.measureText(' ').width;
-                const totalSpacing = rectWidth - totalTextWidth - (padding_x * 2);
-                const spaceBetweenWords = lineText.split(' ').length - 1 > 0 ?
-                    totalSpacing / (lineText.split(' ').length - 1) : 0;
-
-                let currentX = rectX + padding_x; // الحشو
-                lineText.split(' ').forEach((word, index) => {
-                    ctx.fillText(word, currentX, startY + (i * lineHeight));
-                    currentX += ctx.measureText(word).width + spaceBetweenWords + spaceWidth;
-                });
-            } else {
-                ctx.fillText(lineText, rectX + padding_x, startY + (i * lineHeight)); // محاذاة لليسار
-            }
-        }
-    }
-
-    ctx.restore();
+        wrapText(ctx, text, padding_x, rectY, text_box_width - (padding_x * 2), 50);
+        ctx.restore();
+    });
 }
 
 function updateDownloadButton() {
@@ -266,53 +253,38 @@ function downloadImage() {
 }
 
 async function handleFiles(files) {
-    await loadFont(); // تأكد من تحميل الخطوط إذا لزم الأمر
+    try {
+        await loadFont();
 
-    if (files.length > 0) {
-        const file = files[0]; // استخدام أول ملف فقط
+        if (files.length > 0) {
+            const file = files[0];
 
-        if (file) {
-            // التحقق من نوع الملف
-            if (file.type === "image/heic") {
-                // تحويل HEIC إلى JPEG
-                const convertedBlob = await convertHEICToJPEG(file);
-                if (convertedBlob) {
-                    processImage(convertedBlob); // معالجة الصورة بعد تحويلها
-                    await extractAndDisplayText(convertedBlob); // استخراج النص وعرضه
-                } else {
-                    console.error("فشل تحويل ملف HEIC.");
-                }
-            } else if (file.type.startsWith("image/")) {
+            if (file.type.startsWith("image/")) {
                 const reader = new FileReader();
-
-                reader.onload = async (event) => {
+                
+                reader.onload = function(e) {
                     const img = new Image();
-
-                    img.onload = async function () {
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-
-                        // تعيين حجم الكانفاس ليكون بنفس أبعاد الصورة
-                        canvas.width = img.width;
-                        canvas.height = img.height;
-
-                        // رسم الصورة بالكامل على الكانفاس
-                        ctx.drawImage(img, 0, 0, img.width, img.height);
-
-                        // محاولة استخراج النص من الصورة
-                        await extractAndDisplayText(canvas); // استخراج النص وعرضه
+                    img.onload = function() {
+                        croppedImage = img;
+                        processImage(img);
                     };
-
-                    img.src = event.target.result; // تعيين مصدر الصورة
+                    img.onerror = function() {
+                        console.error("فشل تحميل الصورة");
+                    };
+                    img.src = e.target.result;
                 };
 
-                reader.readAsDataURL(file); // قراءة الملف كـ Data URL
+                reader.onerror = function() {
+                    console.error("فشل قراءة الملف");
+                };
+
+                reader.readAsDataURL(file);
             } else {
-                console.error("الملف المحدد ليس صورة.");
+                console.error("نوع الملف غير مدعوم");
             }
         }
-    } else {
-        console.error("لم يتم اختيار أي ملفات.");
+    } catch (error) {
+        console.error("حدث خطأ:", error);
     }
 }
 
@@ -353,7 +325,7 @@ async function extractAndDisplayText(canvas) {
             console.log("لم يتم استخراج أي نص من الصورة.");
         }
     } catch (error) {
-        console.error("خطأ في استخراج النص:", error);
+        console.error("طأ في استخراج النص:", error);
     }
 }
 
@@ -412,8 +384,12 @@ let textChangeTimer;
 function handleTextChange() {
     clearTimeout(textChangeTimer);
     textChangeTimer = setTimeout(() => {
-        if (croppedImage) processImage(croppedImage);
-    }, 300);
+        if (croppedImage) {
+            requestAnimationFrame(() => {
+                processImage(croppedImage);
+            });
+        }
+    }, 100); // تأخير أقل للاستجابة السريعة
 }
 
 // تابع لاستخراج النصوص من الصورة
@@ -438,11 +414,14 @@ document.getElementById('watermarkSelect').addEventListener('change', function (
     if (croppedImage) processImage(croppedImage);
 });
 
-document.getElementById('opacitySlider').addEventListener('input', function() {
-    watermarkOpacity = this.value;
-    if (croppedImage) processImage(croppedImage);
-});
-
+document.getElementById('opacitySlider').addEventListener('input', throttle(function() {
+    watermarkOpacity = parseFloat(this.value);
+    if (croppedImage) {
+        requestAnimationFrame(() => {
+            processImage(croppedImage);
+        });
+    }
+}, 16));
 
 
 
@@ -577,6 +556,186 @@ document.addEventListener("DOMContentLoaded", function() {
 
     if (croppedImage) processImage(croppedImage);
 });
+
+// إضافة كانفاس مؤقت للـ double buffering
+const tempCanvas = document.createElement('canvas');
+const tempCtx = tempCanvas.getContext('2d');
+
+// تحديث دالة processImage لتتعامل مع ارتفاع النص المتغير
+async function processImage(image) {
+    try {
+        if (!canvas || !image) {
+            console.error("Canvas or image not found");
+            return;
+        }
+
+        tempCanvas.width = canvasSize.width;
+        tempCanvas.height = canvasSize.height;
+        tempCtx.drawImage(backgroundImg, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        const MAX_SIZE = 870;
+        let newWidth, newHeight;
+        const aspectRatio = image.width / image.height;
+
+        if (image.width > image.height) {
+            newWidth = MAX_SIZE;
+            newHeight = Math.round(MAX_SIZE / aspectRatio);
+        } else {
+            newHeight = MAX_SIZE;
+            newWidth = Math.round(MAX_SIZE * aspectRatio);
+        }
+
+        // حساب ارتفاع النص
+        const text = document.getElementById('textBox').value;
+        const lineHeight = 53;
+        let textHeight = 0;
+        
+        if (text) {
+            tempCtx.save();
+            tempCtx.font = "48px 'Tajawal', sans-serif";
+            
+            // حساب عدد الأسطر
+            const words = text.split(' ');
+            let line = '';
+            let lines = [];
+            
+            for (let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' ';
+                let metrics = tempCtx.measureText(testLine);
+                let testWidth = metrics.width;
+                
+                if (testWidth > text_box_width - (padding_x * 2) && n > 0) {
+                    lines.push(line.trim());
+                    line = words[n] + ' ';
+                } else {
+                    line = testLine;
+                }
+            }
+            lines.push(line.trim());
+            
+            textHeight = lines.length * lineHeight;
+            tempCtx.restore();
+        }
+
+        // حساب المواقع مع الأخذ في الاعتبار ارتفاع النص
+        const canvasMiddleY = canvasSize.height / 2;
+        const totalHeight = textHeight + 35 + newHeight; // ارتفاع النص + المسافة + ارتفاع الصورة
+        const startY = canvasMiddleY - (totalHeight / 2);
+
+        // تحديد موقع النص والصورة
+        const textY = isTextPositionEnabled ? textPositionY : startY;
+        const imageY = isImagePositionEnabled ? imagePositionY : startY + textHeight + 35;
+
+        // تحديث قيم الشرائط لتعكس المواقع الحالية
+        if (!isTextPositionEnabled) {
+            textPositionY = textY;
+            document.getElementById('textPositionSlider').value = textY;
+        }
+        if (!isImagePositionEnabled) {
+            imagePositionY = imageY;
+            document.getElementById('imagePositionSlider').value = imageY;
+        }
+
+        // رسم النص
+        if (text) {
+            tempCtx.save();
+            tempCtx.font = "48px 'Tajawal', sans-serif";
+            tempCtx.fillStyle = "#fff";
+            tempCtx.textBaseline = "middle";
+            wrapText(tempCtx, text, padding_x, textY, text_box_width - (padding_x * 2), lineHeight);
+            tempCtx.restore();
+        }
+
+        // رسم الصورة
+        const offsetX = (tempCanvas.width - newWidth) / 2;
+        const offsetY = imageY;
+
+        tempCtx.save();
+        tempCtx.beginPath();
+        tempCtx.moveTo(offsetX + border_radius, offsetY);
+        tempCtx.arcTo(offsetX + newWidth, offsetY, offsetX + newWidth, offsetY + newHeight, border_radius);
+        tempCtx.arcTo(offsetX + newWidth, offsetY + newHeight, offsetX, offsetY + newHeight, border_radius);
+        tempCtx.arcTo(offsetX, offsetY + newHeight, offsetX, offsetY, border_radius);
+        tempCtx.arcTo(offsetX, offsetY, offsetX + newWidth, offsetY, border_radius);
+        tempCtx.closePath();
+        tempCtx.clip();
+        tempCtx.drawImage(image, offsetX, offsetY, newWidth, newHeight);
+        tempCtx.restore();
+
+        // رسم العلامة المائية
+        if (document.getElementById('toggleWatermark').checked) {
+            const watermark = new Image();
+            await new Promise((resolve, reject) => {
+                watermark.onload = () => {
+                    const watermarkWidth = 102;
+                    const watermarkHeight = 50;
+                    let watermarkX = offsetX + (newWidth - watermarkWidth) / 2;
+                    let watermarkY = offsetY + newHeight - 50 - watermarkHeight;
+
+                    tempCtx.globalAlpha = watermarkOpacity;
+                    tempCtx.drawImage(watermark, watermarkX, watermarkY, watermarkWidth, watermarkHeight);
+                    tempCtx.globalAlpha = 1;
+                    resolve();
+                };
+                watermark.onerror = reject;
+                watermark.src = document.getElementById('watermarkSelect').value;
+            });
+        }
+
+        requestAnimationFrame(() => {
+            canvas.width = canvasSize.width;
+            canvas.height = canvasSize.height;
+            ctx.drawImage(tempCanvas, 0, 0);
+            canvas.style.display = "block";
+            updateDownloadButton();
+        });
+
+    } catch (error) {
+        console.error("Error in processImage:", error);
+    }
+}
+
+// تحديث معالجات الأحداث لتكون أكثر سلاسة
+function createSmoothHandler(callback) {
+    let rafId = null;
+    return function(...args) {
+        if (rafId) {
+            cancelAnimationFrame(rafId);
+        }
+        rafId = requestAnimationFrame(() => {
+            callback.apply(this, args);
+            rafId = null;
+        });
+    };
+}
+
+// تطبيق المعالج السلس على تغيير النص
+document.getElementById('textBox').addEventListener('input', createSmoothHandler(() => {
+    if (croppedImage) processImage(croppedImage);
+}));
+
+// تطبيق المعالج السلس على تغيير موضع النص
+document.getElementById('textPositionSlider').addEventListener('input', createSmoothHandler(function() {
+    isTextPositionEnabled = true;
+    document.getElementById('toggleTextPosition').checked = true;
+    textPositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+}));
+
+// تطبيق المعالج السلس على تغيير موضع الصورة
+document.getElementById('imagePositionSlider').addEventListener('input', createSmoothHandler(function() {
+    isImagePositionEnabled = true;
+    document.getElementById('toggleImagePosition').checked = true;
+    imagePositionY = parseInt(this.value);
+    if (croppedImage) processImage(croppedImage);
+}));
+
+// تطبيق المعالج السلس على تغيير شفافية العلامة المائية
+document.getElementById('opacitySlider').addEventListener('input', createSmoothHandler(function() {
+    watermarkOpacity = parseFloat(this.value);
+    if (croppedImage) processImage(croppedImage);
+}));
+
 
 
 
